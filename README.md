@@ -2,7 +2,8 @@
 
 Aplicação interativa desenvolvida em **Python + Streamlit** para simulação e análise de investimentos.  
 O objetivo é permitir que o usuário visualize de forma simples o impacto de aportes, tempo e rentabilidade em seus investimentos.
-
+## Demonstração
+![Demonstração do SecureInvest](demo.gif)
 ---
 
 ## ⚙️ Tecnologias utilizadas
