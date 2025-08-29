@@ -13,7 +13,6 @@ import io
 import base64
 from streamlit.components.v1 import html
 import json
-from fpdf import FPDF as FPDF
 import threading
 import queue
 
@@ -1424,15 +1423,6 @@ class SecureInvestSimulator:
             return adjusted_result
         return base_result
 
-# Função para criar PDF
-def create_pdf(data, title):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt=title, ln=True, align='C')
-    # ... resto do código
-    return pdf.output(dest='S').encode('latin1')
-        
 # Função para criar Excel
 def create_excel(data):
     """Cria uma planilha Excel com os resultados da simulação"""
