@@ -20,7 +20,7 @@ try:
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
-    
+
 warnings.filterwarnings('ignore')
 
 # Configuração da página
@@ -2245,7 +2245,7 @@ def main():
     
     else:
         # Página inicial quando não há simulação
-        st.info("💡 Configure os parâmetros de investimento na barra lateral e clique em 'Simular Investimentos' para ver os resultados.")
+        st.info("💡 Configure os parâmetros de investimento na barra lateral, basta clicar nas setas no canto superior esquerdo (>>), pós preencher os campos desejados clique em 'Simular Investimentos' para ver os resultados.")
         
         col1, col2, col3, col4 = st.columns(4)
         
