@@ -13,16 +13,86 @@ import io
 import base64
 from streamlit.components.v1 import html
 import json
-
-try:
-    from reportlab.lib.pagesizes import letter
-    from reportlab.pdfgen import canvas
-    REPORTLAB_AVAILABLE = True
-except ImportError:
-    REPORTLAB_AVAILABLE = False
-
+from fpdf import FPDF
+import threading
+import queue
 warnings.filterwarnings('ignore')
+# Adicione esta classe APÓS as importações e ANTES da configuração da página
+class RealTimeTicker:
+    def __init__(self):
+        self.ticker_data = queue.Queue()
+        self.running = False
+        self.thread = None
+        
+        self.assets = {
+            '^BVSP': 'IBOV', '^GSPC': 'S&P 500', '^DJI': 'DOW JONES', '^IXIC': 'NASDAQ',
+            'BRL=X': 'USD/BRL', 'EURBRL=X': 'EUR/BRL', 
+            'BTC-USD': 'BTC', 'ETH-USD': 'ETH',
+            'PETR4.SA': 'PETR4', 'VALE3.SA': 'VALE3', 'ITUB4.SA': 'ITUB4', 'BBDC4.SA': 'BBDC4',
+            'B3SA3.SA': 'B3SA3', 'WEGE3.SA': 'WEGE3', 'ABEV3.SA': 'ABEV3'
+        }
+    
+    def fetch_real_time_data(self):
+        """Busca dados em tempo real"""
+        try:
+            data = yf.download(list(self.assets.keys()), period="1d", progress=False, group_by='ticker')
+            results = {}
+            
+            for ticker in self.assets.keys():
+                try:
+                    if ticker in data:
+                        if isinstance(data, pd.DataFrame):
+                            last_price = data['Close'].iloc[-1]
+                            prev_close = data['Close'].iloc[-2] if len(data) > 1 else last_price
+                        else:
+                            ticker_data = data[ticker]
+                            last_price = ticker_data['Close'].iloc[-1]
+                            prev_close = ticker_data['Close'].iloc[-2] if len(ticker_data) > 1 else last_price
+                        
+                        change = last_price - prev_close
+                        change_percent = (change / prev_close) * 100 if prev_close != 0 else 0
+                        
+                        results[ticker] = {
+                            'symbol': self.assets[ticker],
+                            'price': last_price,
+                            'change': change,
+                            'change_percent': change_percent
+                        }
+                except:
+                    continue
+            return results
+        except:
+            return None
+    
+    def start(self):
+        """Inicia a thread de atualização"""
+        self.running = True
+        self.thread = threading.Thread(target=self._update_loop)
+        self.thread.daemon = True
+        self.thread.start()
+    
+    def _update_loop(self):
+        """Loop de atualização contínua"""
+        while self.running:
+            try:
+                data = self.fetch_real_time_data()
+                if data:
+                    self.ticker_data.put(data)
+                time.sleep(60)  # Atualiza a cada 60 segundos
+            except:
+                time.sleep(60)
+    
+    def get_latest_data(self):
+        """Obtém os dados mais recentes"""
+        try:
+            return self.ticker_data.get_nowait()
+        except:
+            return None
 
+# Inicialize o ticker global
+if 'ticker' not in st.session_state:
+    st.session_state.ticker = RealTimeTicker()
+    st.session_state.ticker.start()
 # Configuração da página
 st.set_page_config(
     page_title="SecureInvest - Simulador de Investimentos",
@@ -66,66 +136,70 @@ def reset_parameters():
 
 # Componente de Ticker para mostrar cotações em tempo real
 def ticker_component():
-    ticker_html = """
+    latest_data = st.session_state.ticker.get_latest_data()
+    
+    if not latest_data:
+        ticker_items = [
+            "IBOV: 128.456,32 (+1,23%)", "S&P 500: 4.890,21 (+0,87%)", "DOW JONES: 38.456,78 (-0,32%)",
+            "NASDAQ: 16.345,67 (+1,45%)", "USD/BRL: R$ 5,42 (-0,15%)", "EUR/BRL: R$ 5,89 (+0,32%)",
+            "BTC: $62.345,21 (+3,45%)", "PETR4: R$ 36,78 (+2,11%)", "VALE3: R$ 68,92 (-0,87%)"
+        ]
+    else:
+        ticker_items = []
+        for ticker, data in list(latest_data.items())[:12]:
+            symbol = data['symbol']
+            price = data['price']
+            change_percent = data['change_percent']
+            
+            if symbol in ['USD/BRL', 'EUR/BRL']:
+                price_str = f"R$ {price:,.2f}"
+            elif symbol in ['BTC', 'ETH']:
+                price_str = f"$ {price:,.2f}"
+            elif price > 1000:
+                price_str = f"{price:,.0f}"
+            else:
+                price_str = f"{price:,.2f}"
+            
+            sign = "+" if change_percent >= 0 else ""
+            color_class = "positive" if change_percent >= 0 else "negative"
+            
+            ticker_items.append(
+                f"<span class='ticker-symbol'>{symbol}:</span> "
+                f"<span class='ticker-price'>{price_str}</span> "
+                f"<span class='ticker-change {color_class}'>({sign}{change_percent:+.2f}%)</span>"
+            )
+    
+    ticker_html = f"""
     <div style="background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%); 
-                color: white; 
-                padding: 10px; 
-                border-radius: 5px;
-                margin-bottom: 20px;
-                overflow: hidden;
-                position: relative;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                color: white; padding: 12px 0; border-radius: 5px; margin-bottom: 20px;
+                overflow: hidden; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                font-family: 'Arial', sans-serif;">
         <div class="ticker-wrap">
             <div class="ticker">
-                <div class="ticker__item">IBOV: 128.456,32 (+1,23%)</div>
-                <div class="ticker__item">S&P 500: 4.890,21 (+0,87%)</div>
-                <div class="ticker__item">DOW JONES: 38.456,78 (-0,32%)</div>
-                <div class="ticker__item">NASDAQ: 16.345,67 (+1,45%)</div>
-                <div class="ticker__item">USD/BRL: R$ 5,42 (-0,15%)</div>
-                <div class="ticker__item">EUR/BRL: R$ 5,89 (+0,32%)</div>
-                <div class="ticker__item">BTC: $62.345,21 (+3,45%)</div>
-                <div class="ticker__item">PETR4: R$ 36,78 (+2,11%)</div>
-                <div class="ticker__item">VALE3: R$ 68,92 (-0,87%)</div>
-                <div class="ticker__item">ITUB4: R$ 34,15 (+1,24%)</div>
-                <div class="ticker__item">BBDC4: R$ 16,43 (+0,92%)</div>
-                <div class="ticker__item">WEGE3: R$ 42,56 (+1,78%)</div>
+                {"".join([f"<div class='ticker__item'>{item}</div>" for item in ticker_items])}
             </div>
+        </div>
+        <div style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); 
+                   background: rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 3px;
+                   font-size: 10px; font-weight: bold;">
+            🔄 TEMPO REAL
         </div>
     </div>
     <style>
-    .ticker-wrap {
-        width: 100%;
-        overflow: hidden;
-        height: 40px;
-        padding-left: 100%;
-        box-sizing: content-box;
-    }
-    .ticker {
-        display: inline-block;
-        height: 40px;
-        line-height: 40px;
-        white-space: nowrap;
-        padding-right: 100%;
-        box-sizing: content-box;
-        animation-iteration-count: infinite;
-        animation-timing-function: linear;
-        animation-name: ticker;
-        animation-duration: 40s;
-    }
-    .ticker__item {
-        display: inline-block;
-        padding: 0 2rem;
-        font-size: 16px;
-        font-weight: bold;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
-    }
-    @keyframes ticker {
-        0% { transform: translate3d(0, 0, 0); }
-        100% { transform: translate3d(-100%, 0, 0); }
-    }
+    .ticker-wrap {{ width: 100%; overflow: hidden; height: 30px; padding-left: 100%; box-sizing: content-box; }}
+    .ticker {{ display: inline-block; height: 30px; line-height: 30px; white-space: nowrap;
+              padding-right: 100%; box-sizing: content-box; animation-iteration-count: infinite;
+              animation-timing-function: linear; animation-name: ticker; animation-duration: 60s; }}
+    .ticker__item {{ display: inline-block; padding: 0 1.5rem; font-size: 14px; font-weight: 500; }}
+    .ticker-symbol {{ font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.3); }}
+    .ticker-price {{ font-weight: 600; }}
+    .ticker-change.positive {{ color: #10B981; font-weight: bold; }}
+    .ticker-change.negative {{ color: #EF4444; font-weight: bold; }}
+    @keyframes ticker {{ 0% {{ transform: translate3d(0, 0, 0); }} 100% {{ transform: translate3d(-100%, 0, 0); }} }}
     </style>
     """
-    st.markdown(ticker_html, unsafe_allow_html=True)
+    
+    html(ticker_html, height=50)
 
 # Aplicar tema antes de qualquer outro conteúdo
 if st.session_state.theme == 'dark':
@@ -1348,65 +1422,14 @@ class SecureInvestSimulator:
         return base_result
 
 # Função para criar PDF
-def create_pdf(data, title="Relatório de Investimentos"):
-    """Cria um relatório PDF com os resultados da simulação"""
-    try:
-        # Tentar importar reportlab
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas
-        import io
+def create_pdf(data, title):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt=title, ln=True, align='C')
+    # ... resto do código
+    return pdf.output(dest='S').encode('latin1')
         
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=letter)
-        width, height = letter
-        
-        # Adicionar título
-        c.setFont("Helvetica-Bold", 16)
-        c.drawString(50, height - 50, title)
-        
-        # Adicionar data
-        c.setFont("Helvetica", 10)
-        c.drawString(50, height - 70, f"Data do relatório: {datetime.date.today().strftime('%d/%m/%Y')}")
-        
-        # Adicionar dados
-        y_position = height - 100
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(50, y_position, "Resultados da Simulação")
-        y_position -= 30
-        
-        c.setFont("Helvetica", 10)
-        for i, (key, value) in enumerate(data.items()):
-            if y_position < 100:
-                c.showPage()
-                y_position = height - 50
-                c.setFont("Helvetica", 10)
-            
-            c.drawString(50, y_position, f"{key}: {value}")
-            y_position -= 15
-        
-        c.save()
-        buffer.seek(0)
-        return buffer
-        
-    except ImportError:
-        # Fallback se reportlab não estiver instalado
-        st.error("""
-        ⚠️ **Módulo reportlab não instalado**
-        
-        Para exportar relatórios em PDF, instale o reportlab:
-        ```
-        pip install reportlab
-        ```
-        
-        Enquanto isso, use a exportação em Excel que está disponível.
-        """)
-        
-        # Retornar um buffer vazio
-        return io.BytesIO()
-    except Exception as e:
-        st.error(f"Erro ao gerar PDF: {str(e)}")
-        return io.BytesIO()
-
 # Função para criar Excel
 def create_excel(data):
     """Cria uma planilha Excel com os resultados da simulação"""
