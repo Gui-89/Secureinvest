@@ -13,10 +13,13 @@ import io
 import base64
 from streamlit.components.v1 import html
 import json
-from fpdf import FPDF
+from fpdf import FPDF as FPDF
 import threading
 import queue
+
 warnings.filterwarnings('ignore')
+
+
 # Adicione esta classe APÓS as importações e ANTES da configuração da página
 class RealTimeTicker:
     def __init__(self):
